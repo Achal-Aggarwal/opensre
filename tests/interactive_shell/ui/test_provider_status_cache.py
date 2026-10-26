@@ -94,7 +94,7 @@ async def test_cancelling_blocked_display_refresh_stops_spinner(
         assert spinner.streaming
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await task
+            await asyncio.wait_for(task, timeout=2)
         assert not spinner.streaming
     finally:
         release.set()

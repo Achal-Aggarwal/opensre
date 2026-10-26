@@ -313,6 +313,24 @@ def verify() -> list[tuple[str, str]]:
     return models()
 
 
+def _revocation_status(profile: dict[str, Any], refresh: str) -> int | None:
+    """Send one revocation request; return its HTTP status, or None if it was not delivered."""
+    try:
+        with httpx.Client(timeout=10, follow_redirects=False) as client:
+            endpoint = issuer_endpoint(discovery(client)["revocation_endpoint"])
+            response = client.post(
+                endpoint,
+                data={
+                    "token": refresh,
+                    "token_type_hint": "refresh_token",
+                    "client_id": profile["client_id"],
+                },
+            )
+    except (httpx.HTTPError, KeyError, ValueError, SubscriptionLoginRequired):
+        return None
+    return response.status_code
+
+
 def logout() -> str:
     """Revoke and clear the selected session, retaining host and account mapping."""
     confirmed = False
@@ -322,22 +340,10 @@ def logout() -> str:
         refresh = profile.get("refresh_token")
         if refresh:
             for attempt in range(2):
-                try:
-                    with httpx.Client(timeout=10, follow_redirects=False) as client:
-                        endpoint = issuer_endpoint(discovery(client)["revocation_endpoint"])
-                        response = client.post(
-                            endpoint,
-                            data={
-                                "token": refresh,
-                                "token_type_hint": "refresh_token",
-                                "client_id": profile["client_id"],
-                            },
-                        )
-                        confirmed = response.status_code == HTTPStatus.OK
-                        if response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR:
-                            break
-                except (httpx.HTTPError, KeyError, ValueError, SubscriptionLoginRequired):
-                    pass
+                status = _revocation_status(profile, refresh)
+                confirmed = status == HTTPStatus.OK
+                if status is not None and status < HTTPStatus.INTERNAL_SERVER_ERROR:
+                    break
                 if attempt == 0:
                     time.sleep(0.5)
         _clear_tokens(profile)

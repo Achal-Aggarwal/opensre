@@ -148,6 +148,9 @@ def provider(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
                 },
             )
         if request.url.path == "/revoke":
+            if state.get("revoke_unreachable"):
+                state["revoke_unreachable"] -= 1
+                raise httpx.ConnectError("revocation endpoint unreachable", request=request)
             form = parse_qs(request.content.decode())
             assert form["client_id"] == [state["issued"]]
             state["revoked"] = form["token"][0]
@@ -327,6 +330,14 @@ def test_failed_revocation_clears_local_tokens_and_reports_remote_failure(provid
     with pytest.raises(SubscriptionLoginRequired, match="sign in"):
         chatgpt.resolve()
     assert not status("chatgpt").configured
+
+
+def test_revocation_retries_after_transport_error_and_confirms(provider):
+    _login()
+    provider["revoke_unreachable"] = 1
+    assert "Remote revocation" not in chatgpt.logout()
+    assert provider["revoked"] == "refresh-original"
+    assert provider["revoke_unreachable"] == 0
 
 
 def test_cancel_before_model_selection_preserves_current_connection(provider, monkeypatch):
