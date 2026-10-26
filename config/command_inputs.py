@@ -31,6 +31,10 @@ class CommandInput:
     max_positionals: int = 0
     missing_target: bool = False
     inline_values: bool = False
+    # Toggle groups are independent of required-value alternatives; the last flag wins.
+    exclusive_flags: tuple[frozenset[str], ...] = ()
+    # Standalone actions can be complete without otherwise required values.
+    complete_flags: frozenset[str] = frozenset()
 
     def matches(self, command: str, args: list[str]) -> bool:
         """Return whether this input applies to a valid but incomplete invocation."""
@@ -80,10 +84,15 @@ class CommandInput:
                 (options for options in self.alternative_options if option in options), ()
             )
             nonempty.difference_update(alternatives)
+            for flags in self.exclusive_flags:
+                if option in flags:
+                    nonempty.difference_update(flags)
             if has_value:
                 nonempty.add(option)
             else:
                 nonempty.discard(option)
+        if self.complete_flags.intersection(nonempty):
+            return False
         if self.missing_target:
             return not supplied_target
         if self.required_options or self.alternative_options:
@@ -199,7 +208,19 @@ MESSAGING_IDENTITY_INPUT = CommandInput(
     alternative_options=(frozenset({"--platform", "-p"}), frozenset({"--user-id", "-u"})),
     inline_values=True,
 )
+REMOTE_SYNC_SETUP_INPUT = CommandInput(
+    "/remote-sync",
+    ("setup",),
+    value_options=frozenset({"--provider", "--bucket", "--prefix", "--region", "--profile"}),
+    flag_options=frozenset({"--enabled", "--disabled"}),
+    empty_value_options=frozenset({"--prefix", "--region", "--profile"}),
+    required_options=frozenset({"--bucket"}),
+    exclusive_flags=(frozenset({"--enabled", "--disabled"}),),
+    complete_flags=frozenset({"--disabled"}),
+    inline_values=True,
+)
 COMMAND_INPUTS = (
+    REMOTE_SYNC_SETUP_INPUT,
     WORK_ADD_INPUT,
     GOAL_SET_INPUT,
     LOOPS_ADD_INPUT,

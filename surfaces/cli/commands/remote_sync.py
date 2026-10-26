@@ -14,7 +14,7 @@ from config.constants.filestorage import (
     DEFAULT_REMOTE_SYNC_PROVIDER,
 )
 from infrastructure.filestorage import RemoteSyncConfigError, RemoteSyncError
-from infrastructure.filestorage.enums import RemoteSyncField, RemoteSyncSubcommand
+from infrastructure.filestorage.enums import RemoteSyncSubcommand
 from infrastructure.filestorage.messages import (
     DISABLED_HELP,
     SETUP_DISABLED_CONFIRM,
@@ -23,8 +23,9 @@ from infrastructure.filestorage.messages import (
     format_status_lines,
 )
 from infrastructure.filestorage.operations import get_sync_status, run_remote_sync
-from infrastructure.filestorage.providers.registry import builtin_providers, provider_extra_fields
+from infrastructure.filestorage.providers.registry import builtin_providers
 from infrastructure.filestorage.setup import (
+    RemoteSyncSetupError,
     RemoteSyncSetupRequest,
     disable_remote_sync,
     save_remote_sync_settings,
@@ -161,7 +162,7 @@ def run_remote_sync_on_exit() -> None:
 @click.option(
     "--bucket",
     default=None,
-    help="Store name you own (S3 bucket, GCS bucket, or Blob store id).",
+    help="Store name you own. Required unless --disabled is used alone.",
 )
 @click.option(
     "--prefix",
@@ -184,7 +185,7 @@ def setup_command(
     profile: str | None,
     enabled: bool,
 ) -> None:
-    """Write remote_sync settings to ~/.opensre/config.yml (interactive if flags omitted)."""
+    """Save remote-sync settings from flags; use /remote-sync setup for the editable form."""
     if not enabled and (bucket is None or not bucket.strip()):
         # --disabled with no new settings just switches the stored section off.
         try:
@@ -198,7 +199,7 @@ def setup_command(
         click.echo(SETUP_DISABLED_CONFIRM)
         raise SystemExit(SUCCESS)
     try:
-        request = _collect_setup_request(
+        request = _setup_request_from_flags(
             provider=provider,
             bucket=bucket,
             prefix=prefix,
@@ -207,9 +208,7 @@ def setup_command(
             enabled=enabled,
         )
         config = save_remote_sync_settings(request)
-    except (RemoteSyncError, click.Abort) as exc:
-        if isinstance(exc, click.Abort):
-            raise SystemExit(ERROR) from exc
+    except RemoteSyncError as exc:
         click.echo(str(exc), err=True)
         raise SystemExit(ERROR) from exc
     for line in format_setup_lines(config, enabled=request.enabled):
@@ -243,7 +242,7 @@ def _reject_disabled_with_setup_flags(
         )
 
 
-def _collect_setup_request(
+def _setup_request_from_flags(
     *,
     provider: str | None,
     bucket: str | None,
@@ -252,58 +251,35 @@ def _collect_setup_request(
     profile: str | None,
     enabled: bool,
 ) -> RemoteSyncSetupRequest:
-    """Use flags when complete; otherwise prompt on a TTY."""
-    flags_complete = provider is not None and bucket is not None and str(bucket).strip() != ""
-    if flags_complete:
-        return RemoteSyncSetupRequest(
-            bucket=str(bucket),
-            provider=str(provider),
-            prefix=prefix if prefix is not None else DEFAULT_REMOTE_SYNC_PREFIX,
-            region=region or "",
-            profile=profile or "",
-            enabled=enabled,
+    """Reject incomplete flags on every terminal without collecting interactive input."""
+    values = {
+        name: value
+        for name, value in (
+            ("provider", provider),
+            ("bucket", bucket),
+            ("prefix", prefix),
+            ("region", region),
+            ("profile", profile),
         )
-
-    stdin = cast(Callable[[str], TextIO], click.get_text_stream)("stdin")
-    if not stdin.isatty():
-        raise RemoteSyncError(
-            "pass --provider and --bucket, or run setup in an interactive terminal"
+        if value is not None
+    }
+    for name, value in values.items():
+        if value.startswith("--"):
+            raise RemoteSyncSetupError(f"--{name} requires a value", field=name)
+    if bucket is None or not bucket.strip():
+        raise click.UsageError(
+            "setup needs --bucket. Example: opensre remote-sync setup "
+            "--provider aws --bucket my-bucket. "
+            "For an editable form, use /remote-sync setup in the interactive shell."
         )
-
-    bucket_value = click.prompt(
-        "Bucket / store name", default=bucket or "", show_default=bool(bucket)
-    )
-    provider_value = click.prompt(
-        f"Provider ({', '.join(builtin_providers())}, …)",
-        default=provider or DEFAULT_REMOTE_SYNC_PROVIDER,
-        show_default=True,
-    )
-    prefix_value = click.prompt(
-        "Prefix", default=prefix or DEFAULT_REMOTE_SYNC_PREFIX, show_default=True
-    )
     return RemoteSyncSetupRequest(
-        bucket=bucket_value,
-        provider=provider_value,
-        prefix=prefix_value,
-        region=_prompt_extra_field(RemoteSyncField.REGION, provider_value, region),
-        profile=_prompt_extra_field(RemoteSyncField.PROFILE, provider_value, profile),
+        bucket=bucket,
+        provider=provider if provider is not None else DEFAULT_REMOTE_SYNC_PROVIDER,
+        prefix=prefix if prefix is not None else DEFAULT_REMOTE_SYNC_PREFIX,
+        region=region or "",
+        profile=profile or "",
         enabled=enabled,
     )
-
-
-def _prompt_extra_field(field: RemoteSyncField, provider: str, current: str | None) -> str:
-    """Prompt for ``field`` only if ``provider`` declared it; otherwise leave it unset.
-
-    The declaration (and its prompt text) lives with the provider — see
-    :func:`infrastructure.filestorage.providers.registry.provider_extra_fields` —
-    so this stays generic across every registered provider, built-in or
-    community, instead of hardcoding which providers use which field.
-    """
-    declared = {extra.field: extra for extra in provider_extra_fields(provider)}
-    extra = declared.get(field)
-    if extra is None:
-        return current or ""
-    return str(click.prompt(extra.prompt, default=current or "", show_default=False))
 
 
 __all__ = ["remote_sync_command", "run_remote_sync_on_exit"]
