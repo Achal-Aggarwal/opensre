@@ -26,17 +26,18 @@ ONBOARDING_MENU_TITLE = "What would you like to do?"
 # Master onboarding menu row the shell handles itself: no model turn, plain prompt.
 SKIP_DEMO_OPTION = "Open the shell"
 
-# First screen. Analyze is a leaf; the automation row opens the follow-up.
-ANALYZE_REPO_OPTION = "Analyze & improve a repo (recommended)"
-AUTOMATION_GROUP_OPTION = "Keep my CI/CD healthy automatically"
+# First screen. The automation row opens the follow-up; analyze is a leaf.
+# The follow-up's title repeats the automation row without its tag.
+AUTOMATION_MENU_TITLE = "Keep my CI/CD healthy automatically"
+AUTOMATION_GROUP_OPTION = f"{AUTOMATION_MENU_TITLE} (recommended)"
+ANALYZE_REPO_OPTION = "Analyze & improve a repo"
 OUTCOME_MENU_OPTIONS = (
-    ANALYZE_REPO_OPTION,
     AUTOMATION_GROUP_OPTION,
+    ANALYZE_REPO_OPTION,
     SKIP_DEMO_OPTION,
 )
 
-# Follow-up for the automation row. The title repeats the row the user chose.
-AUTOMATION_MENU_TITLE = AUTOMATION_GROUP_OPTION
+# Follow-up for the automation row.
 LOCAL_REPAIR_OPTION = "Run continuously on this machine (recommended)"
 CLOUD_REPAIR_OPTION = "Run one repair in OpenSRE Cloud"
 SLACK_OPTION = "Connect Slack"

@@ -53,8 +53,8 @@ def test_master_menu_matches_four_unique_children_and_preserves_specialists() ->
         "connecting-slack",
     ]
     assert [s.demo_order for s in children] == [1, 2, 3, 4]
-    assert getting_started_options() == (
-        ANALYZE_REPO_OPTION,
+    # The outcome menu replaces the analyze child's own label with its row.
+    assert getting_started_options()[1:] == (
         LOCAL_REPAIR_OPTION,
         CLOUD_REPAIR_OPTION,
         SLACK_OPTION,
@@ -71,8 +71,8 @@ def test_master_menu_matches_four_unique_children_and_preserves_specialists() ->
         menu.options
         == OUTCOME_MENU_OPTIONS
         == (
-            ANALYZE_REPO_OPTION,
             AUTOMATION_GROUP_OPTION,
+            ANALYZE_REPO_OPTION,
             SKIP_DEMO_OPTION,
         )
     )
