@@ -321,6 +321,7 @@ if TYPE_CHECKING:
     from config.constants.ci_fixes import (
         CI_FIX_LEDGER_PATH_ENV as CI_FIX_LEDGER_PATH_ENV,
     )
+    from config.constants.ci_fixes import CI_FIX_STATUS_LABEL as CI_FIX_STATUS_LABEL
     from config.constants.ci_fixes import (
         CI_FIX_UNSETTLED_MERGE_ATTEMPTS as CI_FIX_UNSETTLED_MERGE_ATTEMPTS,
     )
@@ -828,6 +829,7 @@ if TYPE_CHECKING:
     from config.constants.llm import (
         AZURE_OPENAI_BASE_URL_ENV as AZURE_OPENAI_BASE_URL_ENV,
     )
+    from config.constants.llm import HOSTED_MODEL_PROVIDER as HOSTED_MODEL_PROVIDER
     from config.constants.llm import (
         LLM_AUTH_METHOD_ENV as LLM_AUTH_METHOD_ENV,
     )
@@ -853,10 +855,16 @@ if TYPE_CHECKING:
         OPENSRE_LLM_NATIVE_STRUCTURED_OUTPUT_ENV as OPENSRE_LLM_NATIVE_STRUCTURED_OUTPUT_ENV,
     )
     from config.constants.llm import (
+        OPENSRE_MODEL_SETUP_RESULT_ENV as OPENSRE_MODEL_SETUP_RESULT_ENV,
+    )
+    from config.constants.llm import (
         OPENSRE_REACT_GOAL_LLM_REVIEW_ENV as OPENSRE_REACT_GOAL_LLM_REVIEW_ENV,
     )
     from config.constants.llm import (
         OPENSRE_SUBSCRIPTION_AUTH_DIR_ENV as OPENSRE_SUBSCRIPTION_AUTH_DIR_ENV,
+    )
+    from config.constants.llm import (
+        REASONING_EFFORT_MODEL_PREFIXES as REASONING_EFFORT_MODEL_PREFIXES,
     )
     from config.constants.mariadb import (
         MARIADB_DATABASE_ENV as MARIADB_DATABASE_ENV,

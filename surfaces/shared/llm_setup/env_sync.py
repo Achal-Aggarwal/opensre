@@ -1,7 +1,7 @@
 """Sync LLM-provider choices into the project .env file.
 
 Maps a wizard provider selection onto env keys: which keys the provider owns,
-stripping the previous provider's keys on a switch, and mirroring the selection
+preserving inactive provider settings on a switch, and mirroring the selection
 into the wizard store. File and secret-store I/O uses ``config.env_file``.
 """
 
@@ -80,11 +80,12 @@ def _provider_specific_keys(p: ProviderOption) -> set[str]:
     return keys
 
 
-def _env_value_from_lines(lines: list[str], key: str) -> str | None:
+def _env_value_from_lines(lines: list[str], key: str, *, keep_empty: bool = False) -> str | None:
     for line in lines:
         if env_assignment_key(line) == key:
             _, _, rhs = line.partition("=")
-            return rhs.strip().strip("\"'") or None
+            value = rhs.strip().strip("\"'")
+            return value if keep_empty else value or None
     return None
 
 
@@ -108,19 +109,48 @@ def reload_provider_selection() -> None:
     lines = read_env_lines(get_project_env_path())
     provider_value = _env_value_from_lines(lines, LLM_PROVIDER_ENV)
     provider = PROVIDER_BY_VALUE.get(provider_value or "")
-    if provider is None:
+    connection = _env_value_from_lines(lines, OPENSRE_LLM_CONNECTION_ENV)
+    if connection is not None:
+        os.environ[OPENSRE_LLM_CONNECTION_ENV] = connection
+    if provider is None or connection == "account":
         return
-    keys = _provider_specific_keys(provider) | {
+    # Credentials/endpoints are owned by the connect handoff. Model selection
+    # must not replace a reused export with an older saved credential.
+    keys = (
+        _provider_specific_keys(provider)
+        - {
+            provider.api_key_env,
+            provider.endpoint_env,
+            provider.api_version_env,
+        }
+    ) | {
         LLM_PROVIDER_ENV,
         OPENSRE_LLM_CONNECTION_ENV,
         LLM_TRANSPORT_ENV,
     }
     for key in keys:
-        value = _env_value_from_lines(lines, key)
+        # An explicitly selected CLI default clears an old exported override.
+        value = _env_value_from_lines(lines, key, keep_empty=True)
         if value is not None:
             os.environ[key] = value
         elif key == LLM_TRANSPORT_ENV:
             os.environ.pop(key, None)
+
+
+def reload_connected_provider(provider_value: str, *, written_keys: tuple[str, ...]) -> None:
+    """Reload only settings written for a connected provider, not active routing."""
+    from config.local_env import get_project_env_path
+    from surfaces.shared.llm_setup.catalog import PROVIDER_BY_VALUE
+
+    provider = PROVIDER_BY_VALUE.get(provider_value)
+    if provider is None:
+        return
+    lines = read_env_lines(get_project_env_path())
+    allowed = {provider.api_key_env, provider.endpoint_env, provider.api_version_env} - {""}
+    for key in allowed.intersection(written_keys):
+        value = _env_value_from_lines(lines, key)
+        if value is not None:
+            os.environ[key] = value
 
 
 def sync_provider_env(
@@ -133,19 +163,14 @@ def sync_provider_env(
 ) -> Path:
     """Write provider settings into the project .env.
 
-    Removes stale non-secret keys from other providers. Existing API keys and
-    other secrets are left in place.
+    Preserves inactive provider settings and secrets; only active global routing
+    keys are normalized when switching.
     """
-    from surfaces.shared.llm_setup.catalog import SUPPORTED_PROVIDERS
-
     target_path = env_path or PROJECT_ENV_PATH
     existing = read_env_lines(target_path)
 
-    # Strip stale model/endpoint keys from other providers. API keys and other
-    # secrets stay in ``.env`` — switching providers must not delete them.
+    # Retain inactive connections so switching back keeps their endpoint and models.
     keys_to_remove: set[str] = set()
-    for p in SUPPORTED_PROVIDERS:
-        keys_to_remove |= _provider_specific_keys(p)
 
     # Legacy OAuth-era key: no longer written, always scrubbed from old files.
     keys_to_remove.add(LLM_AUTH_METHOD_ENV)
